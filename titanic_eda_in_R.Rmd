@@ -1,0 +1,360 @@
+EDA in R on Titanic data by Michael Eryan
+========================================================
+
+# Introduction
+
+### The data is a sample and incomplete, so we cannot make any generalizations or definitive conclusions. My goal is just exploration, observation and some speculation.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Load_up}
+setwd('C:\\Users\\rf\\Google Drive\\Education\\R\\Rwork')
+
+#Load all libraries on top
+suppressPackageStartupMessages(library(gmodels))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(gridExtra))
+suppressPackageStartupMessages(library(memisc))
+
+#Begin Project 
+#General data set examination
+#Manual input required - the name of the file
+tinput = 'titanic_data.csv'
+t <- read.csv(tinput)
+
+```
+
+# Automatically produced summary of the data set
+```{r echo=FALSE, message=FALSE, warning=FALSE, Auto_summary}
+print (paste(c('My data set is',tinput), collapse=' '))
+print (paste(c('I imported it into a',class(t)), collapse=' '))
+print (paste(c('It has',dim(t)[2],'columns and', dim(t)[1],'rows.'), collapse=' '))
+print ("Here are the columns in the dataset:")
+print (names(t))
+print ("Here is the structure of the dataset:")
+print (str(t,give.attr=T, give.length=F, give.head=T, vec.len=1))
+print ("Here are a few rows from this data frame:")
+print (head(t))
+print ("Q: Have all the categorical vars been converted to factor?")
+print (sapply(t, function(x) length(unique(x))))
+
+
+print ("Observation: Survived varialbe should really be a factor too. Let's tranform it.")
+t$Survivedf=factor(t$Survived)
+print ("Let's re-order the Sex factor so that Male is first. It will be useful later.")
+t$Sex = factor(t$Sex, names(sort(table(t$Sex), decreasing=TRUE)))
+print ("Also let's create a variable Minor - if Age <18.It will have missing values if Age does.")
+t$Minor = factor(t$Age < 18)
+
+print ("Attach the data frame to save keystrokes later.")
+attach(t)
+
+print ("Summary statistics for the whole data set")
+print (summary(t))
+print ("Survived will be my Y, Gender is the first X, Age is continuous but has missing values (will not impute)")
+
+print ("Q: What do the levels of Embarked mean?")
+print (levels(Embarked))
+print ("A: Port of Embarkation (C = Cherbourg; Q = Queenstown; S = Southampton)")
+
+
+```
+
+# Univariate Plots and Analysis
+### Single variable tabulations
+```{r echo=FALSE, message=FALSE, warning=FALSE, Univ01}
+
+print (table(Survived))
+print (table(Sex))
+print (table(Pclass))
+print (table(Minor))
+
+```
+### Bar charts - like histograms for discrete data
+```{r echo=FALSE, message=FALSE, warning=FALSE, Univ02}
+
+bar1 = ggplot(data=t)+
+  geom_bar(aes(x=Survived), fill="gray")
+bar2 = ggplot(data=t)+
+  geom_bar(aes(x=Sex), fill="pink")
+bar3 = ggplot(data=t)+
+  geom_bar(aes(x=Pclass), fill="blue")
+print (grid.arrange(bar1,bar2,bar3, nrow=3))
+
+```
+
+### Observations: more males than females, more died than survived, 3 is the poorest socio-econ class.
+
+### Fancier bar charts - Counts and Proportions of Gender vs Survival
+```{r echo=FALSE, message=FALSE, warning=FALSE, Univ03}
+sbar1 = ggplot(t, aes(x=Sex,fill=factor(Survived))) + 
+  geom_bar()
+#Proportion
+sbar2 = ggplot(t,aes(x=Sex,fill=factor(Survived))) + 
+  geom_bar(position="fill") 
+print (grid.arrange(sbar1,sbar2, nrow=2))
+```
+
+### Histogram of Age
+```{r echo=FALSE, message=FALSE, warning=FALSE, Univ04}
+print (summary(Age))
+hist_age1 = ggplot(data = t, aes(x = Age)) + 
+  geom_histogram(binwidth = 5, fill = '#5760AB') + 
+  scale_x_continuous(breaks = seq(0,80,5))
+print (hist_age1)
+```
+
+### Histogram and Density plots combined
+```{r echo=FALSE, message=FALSE, warning=FALSE, Univ05}
+dens_age2 = ggplot(data = t, aes(x = Age)) +
+  geom_histogram(aes(y=..density..), fill="#5760AB", colour="black")+
+  geom_density(colour="black", adjust=4) +
+  scale_x_continuous(breaks = seq(0,80,5))
+print (dens_age2)
+```
+
+# Bivariate Plots and Analysis
+
+### Let's facet Age by Sex and Survival
+```{r echo=FALSE, message=FALSE, warning=FALSE, Biv01}
+hist_age2 = ggplot(subset(t,Sex=='female'), aes(x = Age)) + 
+  geom_histogram(binwidth = 5, fill = 'pink') + 
+  scale_x_continuous(breaks = seq(0,80,5)) +
+  facet_wrap(~Survived)
+
+hist_age3 = ggplot(subset(t,Sex=='male'), aes(x = Age)) + 
+  geom_histogram(binwidth = 5, fill = '#5760AB') + 
+  scale_x_continuous(breaks = seq(0,80,5)) +
+  facet_wrap(~Survived)
+
+print (grid.arrange(hist_age2,hist_age3, nrow=2))
+
+```
+
+### Almost mirror image, but is it statistically significant? Let's test by Anova.
+### First, let's look at the mean of Age by gender*survival - groupby
+```{r echo=FALSE, message=FALSE, warning=FALSE, Biv02a}
+mean_age = aggregate(t$Age, list(t$Sex,t$Survived), mean,na.rm=TRUE)
+print (mean_age)
+```
+### For survivors, the means are pretty close, but not so for dead. But is it significant?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Biv02b}
+aov_age_s1 = aov(Age ~ Sex, data=subset(t, subset= Survived==1))
+print (summary(aov_age_s1))
+aov_age_s0 = aov(Age ~ Sex, data=subset(t, subset= Survived==0))
+print (summary(aov_age_s0))
+```
+### Not significant among the survivors.
+### But definitely significant among the dead.
+### Yes, the difference in age by sex is definitely significant among the dead.
+### The men who died were older than the women who died.
+
+### Boxplot: age vs survived and sex
+```{r echo=FALSE, message=FALSE, warning=FALSE, Biv03}
+box_age1 = ggplot(data = t, aes(x = Sex , y=Age)) + 
+  geom_boxplot(aes(group=Sex))
+box_age2 = ggplot(data = t, aes(x = Survived , y=Age)) + 
+  geom_boxplot(aes(group=Survived))
+print (grid.arrange(box_age1,box_age2, nrow=2))
+```
+### Honestly, these boxlplots are not as informative as the previous histograms
+
+### Let's look closer at survival * sex
+```{r echo=FALSE, message=FALSE, warning=FALSE, Biv04}
+t2 = table(Sex, Survived)
+print ("Crosstabulation of Sex and Survival")
+print (addmargins(t2))
+print ("There definitely were more male than female passengers, but were females more likely to survive?")
+print ("Calculate actual proportions")
+print (prop.table(t2))
+print ("Suggests that females were more likely to survive: f-1:3, m-4:1")
+print ("Let's test it - contingency  table analysis using a chi-squared test")
+print (prop.test(t2))
+```
+### The results from this test say that the difference in proportions is not due to chance.
+
+### Let's use another package to do a proper test. 
+### Crosstabulation, Fisher's exact, Contingency table for two categoricals. 
+```{r echo=FALSE, message=FALSE, warning=FALSE, Biv05}
+test1 = CrossTable(Sex, Survived, chisq=TRUE, format="SAS")
+print ("Pull the frequency table again")
+print (test1[4])
+print ("Pull the results of the Chi-squared test")
+print (test1[5])
+print ("Yes, p-value is very small, males were less likely to survive")
+print ("Does this pattern hold when we look only at minors?")
+test2 = with(subset(t,Minor==T), CrossTable(Sex, Survived, chisq=TRUE, format="SAS"))
+print (test2[5])
+```
+### Yes, males were less likely to survive, and the pattern holds even for minors.Note that there is an almost the same number of male and female minors: 58 and 55. But while 69.1% of females survived, only 39.7% of males survived.
+
+### Let's look at the distribution of Age separately for males and females
+```{r echo=FALSE, message=FALSE, warning=FALSE, Biv06}
+hist_minor1 = ggplot(subset(t,Minor==T & Sex=='female'), aes(x = Age)) + 
+  geom_histogram(binwidth = 5, fill = 'pink') + 
+  scale_x_continuous(breaks = seq(0,80,5)) +
+  facet_wrap(~Survived)
+
+hist_minor2 = ggplot(subset(t,Minor==T & Sex=='male') , aes(x = Age)) + 
+  geom_histogram(binwidth = 5, fill = '#5760AB') + 
+  scale_x_continuous(breaks = seq(0,80,5)) +
+  facet_wrap(~Survived)
+
+print (grid.arrange(hist_minor1,hist_minor2, nrow=2))
+```
+### This chart really make it obvious - even among minors (look at 15 year olds), men were less likely to survive. It also suggests that even among minors, the older ones were less likely to survive. This calls for a regression to estimate the marginal effects on probability of survival. 
+
+### How will the box chart looks like for minors?
+```{r echo=FALSE, message=FALSE, warning=FALSE, Biv07}
+mbar1 = ggplot(subset(t,!is.na(Minor)), aes(x=Sex,fill=factor(Survived))) + 
+  geom_bar() 
+mbar2 = ggplot(subset(t,!is.na(Minor)), aes(x=Sex,fill=factor(Survived))) + 
+  geom_bar(position="fill") 
+print (grid.arrange(mbar1,mbar2, nrow=2))
+```
+### Looks similiar to the overall chart above. Shows that Minor or not, males were still less likely to survive.
+
+
+# Multivariate Plots And Analysis
+### Distribution of survival by age faceted by gender
+```{r echo=FALSE, message=FALSE, warning=FALSE, Mul01}
+lprob = ggplot(t, aes(x=Age, y=as.numeric(Survived))) +
+  geom_jitter(height=0.3) +  	
+  geom_smooth()+
+  facet_wrap(~Sex)
+print (lprob)
+
+```
+
+### Pretty stark difference by sex
+
+### Let's build a Linear probability model first
+### Disclaimer: I will not create training/validation set and score as usual
+```{r echo=FALSE, message=FALSE, warning=FALSE, Mul02}
+vars = c('Age', 'Pclass')
+tf <- as.formula(paste('Survived',paste(vars,collapse=' + '),sep=' ~ '))
+m1 = lm(tf, data=t)
+print ("Let's see what will happen when we throw in Sex as well")
+m2 = update(m1, ~. + Sex)
+print ("Note that mtable is from memisc pkg")
+print (mtable(m1,m2))
+print ("Age and Pclass have negative sign, which makes sense")
+print ("Being male has a really significant negative sign")
+```
+
+### Let's build a logistic regression and get the odds as well
+```{r echo=FALSE, message=FALSE, warning=FALSE, Mul03}
+l1 <- glm(tf,family=binomial(link='logit'),data=t)
+l2 = update(l1, ~. + Sex)
+print (mtable(l1,l2))
+print ("Same signs as the LPM, good")
+print ("Now let's exponentiate the coefficients to get the odds ratios")
+print (exp(cbind(OR = coef(l2), confint(l2))))
+```
+
+### Interpretation: an extra year of age decreases the odds of surviving a factor of 0.96. Going from class 1 to 2 or 2 to 3 decreases the odds by a factor of 0.27. Finally, going from female to male decreases the odds by a factor of 0.08 or 12.5 times. That is females were 12 times more likely to survive that males. Also, as we have seen above, this holds true even among minors (<18 years old) - females were more likely to survive.
+
+------
+
+# Final Plots and Summary
+
+### Plot One: Bar chart of Survived and Gender
+```{r echo=FALSE, message=FALSE, warning=FALSE, plot01}
+bar1 = ggplot(data=t)+
+  geom_bar(aes(x=Survived), fill="gray") +
+  scale_x_discrete(limits=c(0,1)) +
+  scale_y_continuous(breaks=seq(0,1000,100)) +
+  labs(list(title = "Survival Distribution", x = "Survived (0=no,1=yes)", y = "Frequency (count)" )) 
+
+bar2 = ggplot(data=t)+
+  geom_bar(aes(x=Sex), fill="pink") +
+  scale_x_discrete(limits=c("male","female")) +
+  scale_y_continuous(breaks=seq(0,1000,100)) +
+  labs(list(title = "Gender Distribution", x = "Male or Female", y = "Frequency (count)" )) 
+
+print (grid.arrange(bar1,bar2, nrow=2))
+
+print ("Here are the actual percentages for the charts above:")
+print (round(table(Survived)/sum(table(Survived)) *100))
+print (round(table(Sex)/sum(table(Sex))*100))
+```
+
+### Plot One Discussion
+
+### Interesting, the distributions of Survived and Sex are almost identical.
+### That is 65% of passengers were male and 62% of passengers did not survive.
+### Is there a link between being male and not surviving?
+
+
+#Plot Two: Distribution of Age by Survived separately by Sex
+```{r echo=FALSE, message=FALSE, warning=FALSE, plot02}
+hist_age2 = ggplot(subset(t,Sex=='female'), aes(x = Age)) + 
+  geom_histogram(binwidth = 5, fill = 'pink') + 
+  scale_x_continuous(breaks = seq(0,80,5)) +
+  labs(list(title = "Distribution of Age for Females", x = "Survived (0=no,1=yes)", y = "Frequency (count)" )) + 
+  facet_wrap(~Survived)
+
+hist_age3 = ggplot(subset(t,Sex=='male'), aes(x = Age)) + 
+  geom_histogram(binwidth = 5, fill = '#5760AB') + 
+  scale_x_continuous(breaks = seq(0,80,5)) +
+  labs(list(title = "Distribution of Age for Males", x = "Survived (0=no,1=yes)", y = "Frequency (count)" )) +
+  facet_wrap(~Survived)
+
+print (grid.arrange(hist_age2,hist_age3, nrow=2))
+```
+
+### Plot Two Discussion
+### This plot looks like a mirror image: most of men did not survive, while most women did.
+
+### Plot Three: Linear probability model by Sex
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, plot03}
+lprob = ggplot(t, aes(x=Age, y=as.numeric(Survived))) +
+  geom_jitter(height=0.3) +  	
+  geom_smooth()+
+  scale_y_discrete(limits=c(0,1)) +
+  scale_x_continuous(breaks = seq(0,80,5)) +
+  labs(list(title = "Linear Probability Model", x = "Age (years)", y = "Survival Probability" )) +
+  facet_wrap(~Sex)
+print (lprob)
+```
+
+### Plot Three Discussion
+### The blue line can be interpreted as the predicted probability of surviving by age. For men this probability falls rapidly at 15 years old and stays pretty low. For women of all ages the probability of surviving is much higher.
+
+------
+
+# Issues, Reflections, Conclusions (Speculations)
+
+### Issues: What we have is an incomplete data set - obviously there were more than 891 passengers on Titanic. We can make no assumptions about whether we got a random sample or a biased one. Therefore we cannot really make any general conclusions but we can speculate about the results. 
+### There is missing data for Age. I did no imputations because I cannot make any assumptions whether the values are MCAR (missing completely at random). Those observations were just dropped by the R's procedures when Age variable was invovled.  
+
+### My exploratory data analysis suggested a link between survival and gender, so I pursued this and conducted statistical tests. 
+
+### Chi-squared test of the frequency of survival based on gender (Sex) returned a very low p-value meaning this pattern could not have occurred by chance.
+### Both the linear and logistic probability models returned negative estimates for being male on survival.
+### The odds ratio of survival of being female comparing to being a male was 12.5.
+### This means that females were 12 times more likely to survive that males.
+### This pattern holds even for minors (<18 years old) - females were still more likely to survive.
+### This seems to suggest that in the good old saying "women and children first" boys of 15 years or older do not count as "children."
+### Next steps? In the future I could review other tragic events and disasters and analyze factors that influence the probability of survival. 
+
+# Appendix: Data Dictionary
+
+### Data source: https://www.kaggle.com/c/titanic/data
+### VARIABLE DESCRIPTIONS:
+### survival        Survival
+### (0 = No; 1 = Yes)
+### pclass          Passenger Class
+### (1 = 1st; 2 = 2nd; 3 = 3rd)
+### name            Name
+### sex             Sex
+### age             Age
+### sibsp           Number of Siblings/Spouses Aboard
+### parch           Number of Parents/Children Aboard
+### ticket          Ticket Number
+### fare            Passenger Fare
+### cabin           Cabin
+### embarked        Port of Embarkation
+### (C = Cherbourg; Q = Queenstown; S = Southampton)
+
+# The End. 
